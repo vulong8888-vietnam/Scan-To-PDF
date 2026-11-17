@@ -1,7 +1,6 @@
 package com.example.scantopdf
 
 import android.content.Context
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
@@ -21,15 +20,13 @@ private const val PAGE_WIDTH_PT = 595f // A4 ~ 595pt
  * Tạo PDF có thể tìm kiếm/copy chữ: vẽ ảnh trang, rồi chồng một lớp chữ gần như
  * trong suốt tại đúng vị trí mà OCR nhận dạng được.
  */
-suspend fun buildSearchablePdf(context: Context, pages: List<Uri>, out: File) =
+suspend fun buildSearchablePdf(context: Context, pages: List<Uri>, out: File, quality: PdfQuality) =
     withContext(Dispatchers.Default) {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         val doc = PdfDocument()
         try {
             pages.forEachIndexed { index, uri ->
-                val bmp = context.contentResolver.openInputStream(uri)?.use {
-                    BitmapFactory.decodeStream(it)
-                } ?: return@forEachIndexed
+                val bmp = loadScaled(context, uri, quality.maxDim)
 
                 val text = recognizer.process(InputImage.fromBitmap(bmp, 0)).await()
 

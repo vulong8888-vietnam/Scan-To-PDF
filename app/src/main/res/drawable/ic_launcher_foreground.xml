@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icon: trang giấy (PDF) + tia quét + máy ảnh -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:pivotX="0"
+        android:pivotY="0"
+        android:scaleX="1.15"
+        android:scaleY="1.15"
+        android:translateX="-5.2"
+        android:translateY="-8.1">
+
+    <!-- Trang giấy có góc gập -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M26,24 L52,24 L62,34 L62,80 L26,80 Z" />
+    <path
+        android:fillColor="#BFD0FF"
+        android:pathData="M52,24 L52,34 L62,34 Z" />
+
+    <!-- Dòng chữ trên trang -->
+    <path
+        android:fillColor="#1F3FA8"
+        android:pathData="M32,40 h20 v2.5 h-20 Z M32,46 h26 v2.5 h-26 Z M32,62 h10 v2.5 h-10 Z" />
+
+    <!-- Tia quét -->
+    <path
+        android:fillColor="#2EE6A6"
+        android:pathData="M22,50.5 h46 v3 h-46 Z" />
+
+    <path
+        android:fillColor="#FF9F1C"
+        android:strokeColor="#1F5FFF"
+        android:strokeWidth="2"
+        android:pathData="M57,56 L73,56 L75,60 L55,60 Z" />
+
+    <!-- Thân máy ảnh (viền xanh để tách khỏi trang giấy) -->
+    <path
+        android:fillColor="#FF9F1C"
+        android:strokeColor="#1F5FFF"
+        android:strokeWidth="2"
+        android:pathData="M51,60 H79 A5,5 0 0 1 84,65 V79 A5,5 0 0 1 79,84 H51 A5,5 0 0 1 46,79 V65 A5,5 0 0 1 51,60 Z" />
+
+    <!-- Ống kính -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M57,72 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0 Z" />
+    <path
+        android:fillColor="#1F3FA8"
+        android:pathData="M59.5,72 a5.5,5.5 0 1,0 11,0 a5.5,5.5 0 1,0 -11,0 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M61.2,70 a1.8,1.8 0 1,0 3.6,0 a1.8,1.8 0 1,0 -3.6,0 Z" />
+
+    <!-- Đèn flash -->
+    <path
+        android:fillColor="#FFF3D6"
+        android:pathData="M76.2,65.5 a1.8,1.8 0 1,0 3.6,0 a1.8,1.8 0 1,0 -3.6,0 Z" />
+    </group>
+</vector>

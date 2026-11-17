@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -12,28 +13,45 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -43,6 +61,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
@@ -59,9 +80,22 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme { ScanApp() }
-        }
+        setContent { ScanTheme { ScanApp() } }
+    }
+}
+
+@Composable
+fun ScanTheme(content: @Composable () -> Unit) {
+    val ctx = LocalContext.current
+    val dark = isSystemInDarkTheme()
+    val scheme = when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+        dark -> darkColorScheme()
+        else -> lightColorScheme()
+    }
+    MaterialTheme(colorScheme = scheme) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, content = content)
     }
 }
 
@@ -76,16 +110,23 @@ private fun listScans(context: Context): List<File> =
 private fun fileUri(context: Context, file: File): Uri =
     FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+private fun prefs(context: Context) =
+    context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScanApp() {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val files = remember { mutableStateListOf<File>().apply { addAll(listScans(context)) } }
-    var ocr by remember { mutableStateOf(false) }
+
+    var quality by remember {
+        mutableStateOf(PdfQuality.entries[prefs(context).getInt("quality", 1).coerceIn(0, 2)])
+    }
+    var ocr by remember { mutableStateOf(prefs(context).getBoolean("ocr", false)) }
+    var idScale by remember { mutableStateOf(prefs(context).getFloat("idScale", 1f)) }
     var busy by remember { mutableStateOf(false) }
     var idMode by remember { mutableStateOf(false) }
-    var idScale by remember { mutableStateOf(1f) }
 
     fun refresh() {
         files.clear()
@@ -98,31 +139,27 @@ fun ScanApp() {
         if (res.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
         val result = GmsDocumentScanningResult.fromActivityResultIntent(res.data)
             ?: return@rememberLauncherForActivityResult
+        val uris = result.pages?.map { it.imageUri } ?: emptyList()
 
-        val name = (if (idMode) "CCCD_" else "Scan_") + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date()) + ".pdf"
+        val name = (if (idMode) "CCCD_" else "Scan_") +
+            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date()) + ".pdf"
         val out = File(scansDir(context), name)
 
         scope.launch {
             busy = true
             try {
-                withContext(Dispatchers.IO) {
-                    if (idMode) {
-                        val uris = result.pages?.map { it.imageUri } ?: emptyList()
-                        if (uris.size < 2) error("Cần đủ 2 ảnh: mặt trước và mặt sau")
-                        buildIdCardPdf(context, uris[0], uris[1], out, idScale)
-                    } else if (ocr) {
-                        val pageUris = result.pages?.map { it.imageUri } ?: emptyList()
-                        buildSearchablePdf(context, pageUris, out)
-                    } else {
-                        val pdfUri = result.pdf?.uri ?: error("Không có file PDF")
-                        context.contentResolver.openInputStream(pdfUri)!!.use { input ->
-                            out.outputStream().use { input.copyTo(it) }
-                        }
-                    }
+                if (idMode) {
+                    if (uris.size < 2) error("Cần đủ 2 ảnh: mặt trước và mặt sau")
+                    buildIdCardPdf(context, uris[0], uris[1], out, idScale, quality)
+                } else if (ocr) {
+                    buildSearchablePdf(context, uris, out, quality)
+                } else {
+                    buildJpegPdf(context, uris, quality, out)
                 }
                 refresh()
-                Toast.makeText(context, "Đã lưu $name", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Đã lưu ${out.nameWithoutExtension}", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
+                out.delete()
                 Toast.makeText(context, "Lỗi: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
                 busy = false
@@ -130,15 +167,12 @@ fun ScanApp() {
         }
     }
 
-    fun startScan(forIdCard: Boolean = false) {
+    fun startScan(forIdCard: Boolean) {
         idMode = forIdCard
         val options = GmsDocumentScannerOptions.Builder()
             .setGalleryImportAllowed(true)
             .setPageLimit(if (forIdCard) 2 else 50)
-            .setResultFormats(
-                GmsDocumentScannerOptions.RESULT_FORMAT_JPEG,
-                GmsDocumentScannerOptions.RESULT_FORMAT_PDF
-            )
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
             .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
             .build()
         GmsDocumentScanning.getClient(options)
@@ -152,122 +186,273 @@ fun ScanApp() {
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Scan to PDF") }) },
-        floatingActionButton = {
-            if (!busy) Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                ExtendedFloatingActionButton(onClick = { startScan(forIdCard = true) }) {
-                    Text("Quét CCCD (2 mặt)")
-                }
-                ExtendedFloatingActionButton(onClick = { startScan() }) {
-                    Text("Quét tài liệu")
-                }
-            }
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = { Text("Scan to PDF", fontWeight = FontWeight.Bold) },
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
         }
     ) { padding ->
-        Column(
-            Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
+        LazyColumn(
+            modifier = Modifier.padding(padding).fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Nhận dạng chữ (OCR)", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "PDF có thể tìm kiếm và copy chữ (xử lý lâu hơn)",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Switch(checked = ocr, onCheckedChange = { ocr = it })
-            }
-
-            Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                Text(
-                    "Kích thước CCCD trên giấy: ${(idScale * 100).toInt()}% (100% = cỡ thật)",
-                    style = MaterialTheme.typography.titleSmall
-                )
-                Slider(
-                    value = idScale,
-                    onValueChange = { idScale = (Math.round(it * 20) / 20f) },
-                    valueRange = 0.5f..2f
-                )
-            }
-
             if (busy) {
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    CircularProgressIndicator()
-                    Text("Đang tạo PDF…")
+                item {
+                    Column {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(6.dp))
+                        Text("Đang tạo PDF…", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
 
-            if (files.isEmpty() && !busy) {
-                Text(
-                    "Chưa có tài liệu nào. Bấm \"Quét tài liệu\" để bắt đầu.",
-                    modifier = Modifier.padding(top = 24.dp)
-                )
+            // Hai nút hành động chính
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionCard(
+                        title = "Quét tài liệu",
+                        subtitle = "Nhiều trang, tự cắt viền",
+                        container = MaterialTheme.colorScheme.primaryContainer,
+                        content = MaterialTheme.colorScheme.onPrimaryContainer,
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f)
+                    ) { startScan(false) }
+                    ActionCard(
+                        title = "Quét CCCD",
+                        subtitle = "2 mặt trên 1 trang A4",
+                        container = MaterialTheme.colorScheme.tertiaryContainer,
+                        content = MaterialTheme.colorScheme.onTertiaryContainer,
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f)
+                    ) { startScan(true) }
+                }
             }
 
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(files, key = { it.absolutePath }) { file ->
-                    Card(Modifier.fillMaxWidth().clickable { openPdf(context, file) }) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(file.name, style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-                                    .format(Date(file.lastModified())) +
-                                    " • " + (file.length() / 1024) + " KB",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            FlowRow {
-                                TextButton(onClick = { sendFiles(context, listOf(file), "application/pdf", null) }) {
-                                    Text("Chia sẻ PDF")
+            // Cài đặt
+            item {
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    )
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Column {
+                            Text("Chất lượng PDF", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(8.dp))
+                            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                                PdfQuality.entries.forEachIndexed { i, q ->
+                                    SegmentedButton(
+                                        selected = quality == q,
+                                        onClick = {
+                                            quality = q
+                                            prefs(context).edit().putInt("quality", i).apply()
+                                        },
+                                        shape = SegmentedButtonDefaults.itemShape(i, PdfQuality.entries.size)
+                                    ) { Text(q.label) }
                                 }
-                                TextButton(onClick = {
-                                    scope.launch {
-                                        val imgs = withContext(Dispatchers.IO) { pdfToImages(file) }
-                                        sendFiles(context, imgs, "image/jpeg", null)
-                                    }
-                                }) { Text("Chia sẻ ảnh") }
-                                TextButton(onClick = {
-                                    sendFiles(context, listOf(file), "application/pdf", "com.zing.zalo")
-                                }) { Text("Zalo") }
-                                TextButton(onClick = {
-                                    sendFiles(context, listOf(file), "application/pdf", "com.facebook.orca")
-                                }) { Text("Messenger") }
-                                TextButton(onClick = {
-                                    scope.launch {
-                                        val imgs = withContext(Dispatchers.IO) { pdfToImages(file) }
-                                        sendFiles(context, imgs, "image/jpeg", "com.facebook.katana")
-                                    }
-                                }) { Text("Facebook") }
-                                TextButton(onClick = {
-                                    sendFiles(context, listOf(file), "application/pdf", "com.android.bluetooth")
-                                }) { Text("Bluetooth") }
-                                TextButton(onClick = {
-                                    file.parentFile?.listFiles { f ->
-                                        f.name.startsWith(file.nameWithoutExtension)
-                                    }?.forEach { it.delete() }
-                                    refresh()
-                                }) { Text("Xóa") }
                             }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                quality.hint,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Nhận dạng chữ (OCR)", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "PDF tìm kiếm và copy được chữ, xử lý lâu hơn",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(checked = ocr, onCheckedChange = {
+                                ocr = it
+                                prefs(context).edit().putBoolean("ocr", it).apply()
+                            })
+                        }
+
+                        Column {
+                            Row {
+                                Text(
+                                    "Cỡ CCCD trên giấy",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "${(idScale * 100).toInt()}%",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Slider(
+                                value = idScale,
+                                onValueChange = { idScale = Math.round(it * 20) / 20f },
+                                onValueChangeFinished = {
+                                    prefs(context).edit().putFloat("idScale", idScale).apply()
+                                },
+                                valueRange = 0.5f..2f
+                            )
+                            Text(
+                                "100% = kích thước thật của thẻ",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
             }
+
+            item {
+                Text(
+                    "Tài liệu gần đây",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+
+            if (files.isEmpty()) {
+                item {
+                    Text(
+                        "Chưa có tài liệu nào.\nBấm \"Quét tài liệu\" hoặc \"Quét CCCD\" để bắt đầu.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                }
+            }
+
+            items(files, key = { it.absolutePath }) { file ->
+                FileItem(file, scope) { refresh() }
+            }
         }
     }
 }
+
+@Composable
+private fun ActionCard(
+    title: String,
+    subtitle: String,
+    container: Color,
+    content: Color,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = container, contentColor = content)
+    ) {
+        Column(Modifier.padding(18.dp).height(64.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun FileItem(file: File, scope: kotlinx.coroutines.CoroutineScope, onChanged: () -> Unit) {
+    val context = LocalContext.current
+    var menu by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val isId = file.name.startsWith("CCCD_")
+
+    fun shareImages(pkg: String?) {
+        scope.launch {
+            val imgs = withContext(Dispatchers.IO) { pdfToImages(file) }
+            sendFiles(context, imgs, "image/jpeg", pkg)
+        }
+    }
+
+    Card(
+        onClick = { openPdf(context, file) },
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+    ) {
+        Row(
+            Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    (if (isId) "CCCD · " else "Tài liệu · ") +
+                        SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(file.lastModified())),
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1
+                )
+                Text(
+                    sizeText(file.length()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = { sendFiles(context, listOf(file), "application/pdf", null) }) {
+                Icon(Icons.Default.Share, contentDescription = "Chia sẻ PDF")
+            }
+            Column {
+                IconButton(onClick = { menu = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Thêm")
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Chia sẻ ảnh JPG") }, onClick = {
+                        menu = false; shareImages(null)
+                    })
+                    DropdownMenuItem(text = { Text("Gửi qua Zalo") }, onClick = {
+                        menu = false; sendFiles(context, listOf(file), "application/pdf", "com.zing.zalo")
+                    })
+                    DropdownMenuItem(text = { Text("Gửi qua Messenger") }, onClick = {
+                        menu = false; sendFiles(context, listOf(file), "application/pdf", "com.facebook.orca")
+                    })
+                    DropdownMenuItem(text = { Text("Đăng Facebook (ảnh)") }, onClick = {
+                        menu = false; shareImages("com.facebook.katana")
+                    })
+                    DropdownMenuItem(text = { Text("Gửi qua Bluetooth") }, onClick = {
+                        menu = false; sendFiles(context, listOf(file), "application/pdf", "com.android.bluetooth")
+                    })
+                    DropdownMenuItem(
+                        text = { Text("Xóa", color = MaterialTheme.colorScheme.error) },
+                        onClick = { menu = false; confirmDelete = true }
+                    )
+                }
+            }
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Xóa tài liệu?") },
+            text = { Text("File này sẽ bị xóa khỏi app và không khôi phục được.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    file.parentFile?.listFiles { f ->
+                        f.name.startsWith(file.nameWithoutExtension)
+                    }?.forEach { it.delete() }
+                    onChanged()
+                }) { Text("Xóa") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Hủy") } }
+        )
+    }
+}
+
+private fun sizeText(bytes: Long): String =
+    if (bytes >= 1024 * 1024) String.format(Locale.US, "%.1f MB", bytes / 1048576f)
+    else "${bytes / 1024} KB"
 
 private fun openPdf(context: Context, file: File) {
     val intent = Intent(Intent.ACTION_VIEW).apply {

@@ -2,7 +2,6 @@ package com.example.scantopdf
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
@@ -22,7 +21,10 @@ private const val CARD_H = 153f
 private const val GAP = 40f
 
 /** Ghép mặt trước (trên) và mặt sau (dưới) của căn cước vào 1 trang A4, đúng kích thước thật. */
-suspend fun buildIdCardPdf(context: Context, front: Uri, back: Uri, out: File, scale: Float = 1f) =
+suspend fun buildIdCardPdf(
+    context: Context, front: Uri, back: Uri, out: File,
+    scale: Float = 1f, quality: PdfQuality = PdfQuality.MEDIUM
+) =
     withContext(Dispatchers.Default) {
         val doc = PdfDocument()
         try {
@@ -37,8 +39,8 @@ suspend fun buildIdCardPdf(context: Context, front: Uri, back: Uri, out: File, s
             val top1 = A4_H / 2f - gap / 2f - ch
             val top2 = A4_H / 2f + gap / 2f
 
-            drawCard(context, canvas, front, RectF(left, top1, left + cw, top1 + ch))
-            drawCard(context, canvas, back, RectF(left, top2, left + cw, top2 + ch))
+            drawCard(context, canvas, front, RectF(left, top1, left + cw, top1 + ch), quality.maxDim)
+            drawCard(context, canvas, back, RectF(left, top2, left + cw, top2 + ch), quality.maxDim)
 
             doc.finishPage(page)
             FileOutputStream(out).use { doc.writeTo(it) }
@@ -47,10 +49,8 @@ suspend fun buildIdCardPdf(context: Context, front: Uri, back: Uri, out: File, s
         }
     }
 
-private fun drawCard(context: Context, canvas: android.graphics.Canvas, uri: Uri, box: RectF) {
-    var bmp: Bitmap = context.contentResolver.openInputStream(uri)?.use {
-        BitmapFactory.decodeStream(it)
-    } ?: error("Không đọc được ảnh")
+private fun drawCard(context: Context, canvas: android.graphics.Canvas, uri: Uri, box: RectF, maxDim: Int) {
+    var bmp: Bitmap = loadScaled(context, uri, maxDim)
 
     // Ảnh dọc -> xoay ngang cho vừa khung thẻ
     if (bmp.height > bmp.width) {
