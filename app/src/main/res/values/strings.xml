@@ -1,3 +1,60 @@
 <resources>
     <string name="app_name">Scan to PDF</string>
+
+    <string name="scan_document">Scan document</string>
+    <string name="scan_document_sub">Multi-page, auto crop</string>
+    <string name="scan_id">Scan ID card</string>
+    <string name="scan_id_sub">Both sides on one A4 page</string>
+
+    <string name="language">Language</string>
+
+    <string name="pdf_quality">PDF quality</string>
+    <string name="q_low">Low</string>
+    <string name="q_medium">Medium</string>
+    <string name="q_high">High</string>
+    <string name="q_low_hint">Small file, good for sharing on chat apps</string>
+    <string name="q_medium_hint">Balance between file size and sharpness</string>
+    <string name="q_high_hint">Very sharp, good for printing, larger file</string>
+
+    <string name="brighten">Brighten image</string>
+    <string name="b_off">Off</string>
+    <string name="b_light">Light</string>
+    <string name="b_medium">Medium</string>
+    <string name="b_strong">Strong</string>
+    <string name="b_off_hint">Keep the original image</string>
+    <string name="b_light_hint">Slightly brighter</string>
+    <string name="b_medium_hint">For photos taken in low light</string>
+    <string name="b_strong_hint">For very dark photos</string>
+
+    <string name="ocr_title">Text recognition (OCR)</string>
+    <string name="ocr_sub">Searchable, copyable PDF text; takes longer</string>
+    <string name="id_size">ID card size on paper</string>
+    <string name="id_size_hint">100% = real card size</string>
+
+    <string name="recent">Recent documents</string>
+    <string name="empty">No documents yet.\nTap \"Scan document\" or \"Scan ID card\" to start.</string>
+    <string name="creating">Creating PDF…</string>
+    <string name="saved">Saved %1$s</string>
+    <string name="error_fmt">Error: %1$s</string>
+    <string name="scanner_fail">Could not open the scanner: %1$s</string>
+    <string name="need_two">Two photos are needed: front and back</string>
+    <string name="no_pages">No pages</string>
+    <string name="cant_read_image">Could not read the image</string>
+
+    <string name="doc_label">Document</string>
+    <string name="id_label">ID card</string>
+    <string name="share">Share</string>
+    <string name="share_pdf">Share PDF</string>
+    <string name="more">More</string>
+    <string name="share_jpg">Share as JPG images</string>
+    <string name="send_zalo">Send via Zalo</string>
+    <string name="send_messenger">Send via Messenger</string>
+    <string name="post_facebook">Post to Facebook (images)</string>
+    <string name="send_bluetooth">Send via Bluetooth</string>
+    <string name="delete">Delete</string>
+    <string name="delete_title">Delete document?</string>
+    <string name="delete_msg">This file will be removed from the app and cannot be restored.</string>
+    <string name="cancel">Cancel</string>
+    <string name="no_pdf_viewer">No PDF viewer installed</string>
+    <string name="app_not_installed">App not installed, opening the general share sheet</string>
 </resources>

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.annotation.StringRes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedOutputStream
@@ -13,18 +14,78 @@ import java.io.FileOutputStream
 
 /** Mức chất lượng PDF: giới hạn cạnh dài nhất của ảnh (px) và độ nén JPEG. */
 enum class PdfQuality(
-    val label: String,
+    @StringRes val label: Int,
     val maxDim: Int,
     val jpegQuality: Int,
-    val hint: String
+    @StringRes val hint: Int
 ) {
-    LOW("Thấp", 1100, 60, "File nhỏ nhẹ, hợp để gửi qua Zalo, Messenger"),
-    MEDIUM("Vừa", 1700, 78, "Cân bằng giữa dung lượng và độ nét"),
-    HIGH("Cao", 2500, 92, "Rất nét, hợp để in, file lớn hơn")
+    LOW(R.string.q_low, 1100, 60, R.string.q_low_hint),
+    MEDIUM(R.string.q_medium, 1700, 78, R.string.q_medium_hint),
+    HIGH(R.string.q_high, 2500, 92, R.string.q_high_hint)
 }
 
-/** Đọc ảnh và thu nhỏ nếu cạnh dài hơn [maxDim]. */
-fun loadScaled(context: Context, uri: Uri, maxDim: Int): Bitmap {
+/** Mức làm sáng ảnh: tự cân bằng sáng tối (auto-levels) rồi nâng sáng vùng tối (gamma). */
+enum class Boost(@StringRes val label: Int, val gamma: Float, @StringRes val hint: Int) {
+    OFF(R.string.b_off, 1f, R.string.b_off_hint),
+    LIGHT(R.string.b_light, 0.85f, R.string.b_light_hint),
+    MEDIUM(R.string.b_medium, 0.7f, R.string.b_medium_hint),
+    STRONG(R.string.b_strong, 0.55f, R.string.b_strong_hint)
+}
+
+/** Làm sáng ảnh: kéo giãn dải sáng theo histogram rồi nâng gamma. */
+fun enhance(src: Bitmap, boost: Boost): Bitmap {
+    if (boost == Boost.OFF) return src
+    val w = src.width
+    val h = src.height
+    val px = IntArray(w * h)
+    src.getPixels(px, 0, w, 0, 0, w, h)
+
+    // Histogram độ sáng (lấy mẫu mỗi 3 điểm ảnh cho nhanh)
+    val hist = IntArray(256)
+    var count = 0
+    var i = 0
+    while (i < px.size) {
+        val c = px[i]
+        val lum = (((c shr 16) and 0xFF) * 299 + ((c shr 8) and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
+        hist[lum]++
+        count++
+        i += 3
+    }
+    fun percentile(p: Float): Int {
+        val target = (count * p).toInt()
+        var acc = 0
+        for (v in 0..255) {
+            acc += hist[v]
+            if (acc >= target) return v
+        }
+        return 255
+    }
+    var lo = percentile(0.01f)
+    var hi = percentile(0.985f)
+    if (hi - lo < 40) { lo = 0; hi = 255 }
+
+    val lut = IntArray(256) { v ->
+        val x = ((v - lo).toFloat() / (hi - lo)).coerceIn(0f, 1f)
+        (Math.pow(x.toDouble(), boost.gamma.toDouble()) * 255.0).toInt().coerceIn(0, 255)
+    }
+    for (k in px.indices) {
+        val c = px[k]
+        val r = lut[(c shr 16) and 0xFF]
+        val g = lut[(c shr 8) and 0xFF]
+        val b = lut[c and 0xFF]
+        px[k] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+    }
+    val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    out.setPixels(px, 0, w, 0, 0, w, h)
+    src.recycle()
+    return out
+}
+
+/** Đọc ảnh, thu nhỏ nếu cạnh dài hơn [maxDim], rồi làm sáng theo [boost]. */
+fun loadScaled(context: Context, uri: Uri, maxDim: Int, boost: Boost = Boost.OFF): Bitmap =
+    enhance(loadScaledRaw(context, uri, maxDim), boost)
+
+private fun loadScaledRaw(context: Context, uri: Uri, maxDim: Int): Bitmap {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
     var sample = 1
@@ -34,7 +95,7 @@ fun loadScaled(context: Context, uri: Uri, maxDim: Int): Bitmap {
     val opts = BitmapFactory.Options().apply { inSampleSize = sample }
     val bmp = context.contentResolver.openInputStream(uri)?.use {
         BitmapFactory.decodeStream(it, null, opts)
-    } ?: error("Không đọc được ảnh")
+    } ?: error(context.getString(R.string.cant_read_image))
 
     val cur = maxOf(bmp.width, bmp.height)
     if (cur <= maxDim) return bmp
@@ -48,10 +109,12 @@ fun loadScaled(context: Context, uri: Uri, maxDim: Int): Bitmap {
  * Ghép các ảnh thành 1 file PDF, mỗi trang là 1 ảnh JPEG nén theo [quality].
  * Tự ghi PDF để kiểm soát được dung lượng file.
  */
-suspend fun buildJpegPdf(context: Context, pages: List<Uri>, quality: PdfQuality, out: File) =
+suspend fun buildJpegPdf(
+    context: Context, pages: List<Uri>, quality: PdfQuality, out: File, boost: Boost = Boost.OFF
+) =
     withContext(Dispatchers.Default) {
         val n = pages.size
-        require(n > 0) { "Không có trang nào" }
+        require(n > 0) { context.getString(R.string.no_pages) }
         val totalObjs = 2 + 3 * n
         val offsets = LongArray(totalObjs + 1)
         var pos = 0L
@@ -69,7 +132,7 @@ suspend fun buildJpegPdf(context: Context, pages: List<Uri>, quality: PdfQuality
             ws("2 0 obj\n<< /Type /Pages /Kids [$kids] /Count $n >>\nendobj\n")
 
             pages.forEachIndexed { i, uri ->
-                val bmp = loadScaled(context, uri, quality.maxDim)
+                val bmp = loadScaled(context, uri, quality.maxDim, boost)
                 val jpg = ByteArrayOutputStream().also {
                     bmp.compress(Bitmap.CompressFormat.JPEG, quality.jpegQuality, it)
                 }.toByteArray()

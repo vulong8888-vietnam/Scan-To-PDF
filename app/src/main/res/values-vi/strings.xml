@@ -1,0 +1,60 @@
+<resources>
+    <string name="app_name">Scan to PDF</string>
+
+    <string name="scan_document">Quét tài liệu</string>
+    <string name="scan_document_sub">Nhiều trang, tự cắt viền</string>
+    <string name="scan_id">Quét CCCD</string>
+    <string name="scan_id_sub">2 mặt trên 1 trang A4</string>
+
+    <string name="language">Ngôn ngữ</string>
+
+    <string name="pdf_quality">Chất lượng PDF</string>
+    <string name="q_low">Thấp</string>
+    <string name="q_medium">Vừa</string>
+    <string name="q_high">Cao</string>
+    <string name="q_low_hint">File nhỏ nhẹ, hợp để gửi qua Zalo, Messenger</string>
+    <string name="q_medium_hint">Cân bằng giữa dung lượng và độ nét</string>
+    <string name="q_high_hint">Rất nét, hợp để in, file lớn hơn</string>
+
+    <string name="brighten">Làm sáng ảnh</string>
+    <string name="b_off">Tắt</string>
+    <string name="b_light">Nhẹ</string>
+    <string name="b_medium">Vừa</string>
+    <string name="b_strong">Mạnh</string>
+    <string name="b_off_hint">Giữ nguyên ảnh gốc</string>
+    <string name="b_light_hint">Sáng hơn một chút</string>
+    <string name="b_medium_hint">Phù hợp ảnh chụp thiếu sáng</string>
+    <string name="b_strong_hint">Dành cho ảnh rất tối</string>
+
+    <string name="ocr_title">Nhận dạng chữ (OCR)</string>
+    <string name="ocr_sub">PDF tìm kiếm và copy được chữ, xử lý lâu hơn</string>
+    <string name="id_size">Cỡ CCCD trên giấy</string>
+    <string name="id_size_hint">100% = kích thước thật của thẻ</string>
+
+    <string name="recent">Tài liệu gần đây</string>
+    <string name="empty">Chưa có tài liệu nào.\nBấm \"Quét tài liệu\" hoặc \"Quét CCCD\" để bắt đầu.</string>
+    <string name="creating">Đang tạo PDF…</string>
+    <string name="saved">Đã lưu %1$s</string>
+    <string name="error_fmt">Lỗi: %1$s</string>
+    <string name="scanner_fail">Không mở được máy quét: %1$s</string>
+    <string name="need_two">Cần đủ 2 ảnh: mặt trước và mặt sau</string>
+    <string name="no_pages">Không có trang nào</string>
+    <string name="cant_read_image">Không đọc được ảnh</string>
+
+    <string name="doc_label">Tài liệu</string>
+    <string name="id_label">CCCD</string>
+    <string name="share">Chia sẻ</string>
+    <string name="share_pdf">Chia sẻ PDF</string>
+    <string name="more">Thêm</string>
+    <string name="share_jpg">Chia sẻ ảnh JPG</string>
+    <string name="send_zalo">Gửi qua Zalo</string>
+    <string name="send_messenger">Gửi qua Messenger</string>
+    <string name="post_facebook">Đăng Facebook (ảnh)</string>
+    <string name="send_bluetooth">Gửi qua Bluetooth</string>
+    <string name="delete">Xóa</string>
+    <string name="delete_title">Xóa tài liệu?</string>
+    <string name="delete_msg">File này sẽ bị xóa khỏi app và không khôi phục được.</string>
+    <string name="cancel">Hủy</string>
+    <string name="no_pdf_viewer">Chưa có app đọc PDF</string>
+    <string name="app_not_installed">Chưa cài app này, mở danh sách chia sẻ chung</string>
+</resources>

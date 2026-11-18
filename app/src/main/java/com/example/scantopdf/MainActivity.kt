@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -63,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -78,9 +80,37 @@ import java.util.Date
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { ScanTheme { ScanApp() } }
+    }
+}
+
+/** Ngôn ngữ trong app: "vi" hoặc "en". Chưa chọn thì theo ngôn ngữ của điện thoại. */
+object LocaleHelper {
+    private fun saved(ctx: Context): String? =
+        ctx.getSharedPreferences("settings", Context.MODE_PRIVATE).getString("lang", null)
+
+    fun wrap(ctx: Context): Context {
+        val lang = saved(ctx) ?: return ctx
+        val locale = Locale(lang)
+        Locale.setDefault(locale)
+        val cfg = Configuration(ctx.resources.configuration)
+        cfg.setLocale(locale)
+        return ctx.createConfigurationContext(cfg)
+    }
+
+    fun current(ctx: Context): String =
+        saved(ctx) ?: if (Locale.getDefault().language == "vi") "vi" else "en"
+
+    fun set(activity: Activity, lang: String) {
+        activity.getSharedPreferences("settings", Context.MODE_PRIVATE)
+            .edit().putString("lang", lang).apply()
+        activity.recreate()
     }
 }
 
@@ -123,6 +153,9 @@ fun ScanApp() {
     var quality by remember {
         mutableStateOf(PdfQuality.entries[prefs(context).getInt("quality", 1).coerceIn(0, 2)])
     }
+    var boost by remember {
+        mutableStateOf(Boost.entries[prefs(context).getInt("boost", 2).coerceIn(0, 3)])
+    }
     var ocr by remember { mutableStateOf(prefs(context).getBoolean("ocr", false)) }
     var idScale by remember { mutableStateOf(prefs(context).getFloat("idScale", 1f)) }
     var busy by remember { mutableStateOf(false) }
@@ -149,18 +182,18 @@ fun ScanApp() {
             busy = true
             try {
                 if (idMode) {
-                    if (uris.size < 2) error("Cần đủ 2 ảnh: mặt trước và mặt sau")
-                    buildIdCardPdf(context, uris[0], uris[1], out, idScale, quality)
+                    if (uris.size < 2) error(context.getString(R.string.need_two))
+                    buildIdCardPdf(context, uris[0], uris[1], out, idScale, quality, boost)
                 } else if (ocr) {
-                    buildSearchablePdf(context, uris, out, quality)
+                    buildSearchablePdf(context, uris, out, quality, boost)
                 } else {
-                    buildJpegPdf(context, uris, quality, out)
+                    buildJpegPdf(context, uris, quality, out, boost)
                 }
                 refresh()
-                Toast.makeText(context, "Đã lưu ${out.nameWithoutExtension}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.saved, out.nameWithoutExtension), Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 out.delete()
-                Toast.makeText(context, "Lỗi: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, context.getString(R.string.error_fmt, e.message ?: ""), Toast.LENGTH_LONG).show()
             } finally {
                 busy = false
             }
@@ -181,7 +214,7 @@ fun ScanApp() {
                 scanLauncher.launch(IntentSenderRequest.Builder(sender).build())
             }
             .addOnFailureListener {
-                Toast.makeText(context, "Không mở được máy quét: ${it.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, context.getString(R.string.scanner_fail, it.message ?: ""), Toast.LENGTH_LONG).show()
             }
     }
 
@@ -208,7 +241,7 @@ fun ScanApp() {
                     Column {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
                         Spacer(Modifier.height(6.dp))
-                        Text("Đang tạo PDF…", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.creating), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -217,16 +250,16 @@ fun ScanApp() {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     ActionCard(
-                        title = "Quét tài liệu",
-                        subtitle = "Nhiều trang, tự cắt viền",
+                        title = stringResource(R.string.scan_document),
+                        subtitle = stringResource(R.string.scan_document_sub),
                         container = MaterialTheme.colorScheme.primaryContainer,
                         content = MaterialTheme.colorScheme.onPrimaryContainer,
                         enabled = !busy,
                         modifier = Modifier.weight(1f)
                     ) { startScan(false) }
                     ActionCard(
-                        title = "Quét CCCD",
-                        subtitle = "2 mặt trên 1 trang A4",
+                        title = stringResource(R.string.scan_id),
+                        subtitle = stringResource(R.string.scan_id_sub),
                         container = MaterialTheme.colorScheme.tertiaryContainer,
                         content = MaterialTheme.colorScheme.onTertiaryContainer,
                         enabled = !busy,
@@ -245,7 +278,24 @@ fun ScanApp() {
                 ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Column {
-                            Text("Chất lượng PDF", style = MaterialTheme.typography.titleSmall)
+                            Text(stringResource(R.string.language), style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(8.dp))
+                            val currentLang = LocaleHelper.current(context)
+                            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                                listOf("vi" to "Tiếng Việt", "en" to "English").forEachIndexed { i, (code, name) ->
+                                    SegmentedButton(
+                                        selected = currentLang == code,
+                                        onClick = {
+                                            if (currentLang != code) LocaleHelper.set(context as Activity, code)
+                                        },
+                                        shape = SegmentedButtonDefaults.itemShape(i, 2)
+                                    ) { Text(name) }
+                                }
+                            }
+                        }
+
+                        Column {
+                            Text(stringResource(R.string.pdf_quality), style = MaterialTheme.typography.titleSmall)
                             Spacer(Modifier.height(8.dp))
                             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                                 PdfQuality.entries.forEachIndexed { i, q ->
@@ -256,12 +306,35 @@ fun ScanApp() {
                                             prefs(context).edit().putInt("quality", i).apply()
                                         },
                                         shape = SegmentedButtonDefaults.itemShape(i, PdfQuality.entries.size)
-                                    ) { Text(q.label) }
+                                    ) { Text(stringResource(q.label)) }
                                 }
                             }
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                quality.hint,
+                                stringResource(quality.hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Column {
+                            Text(stringResource(R.string.brighten), style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(8.dp))
+                            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                                Boost.entries.forEachIndexed { i, b ->
+                                    SegmentedButton(
+                                        selected = boost == b,
+                                        onClick = {
+                                            boost = b
+                                            prefs(context).edit().putInt("boost", i).apply()
+                                        },
+                                        shape = SegmentedButtonDefaults.itemShape(i, Boost.entries.size)
+                                    ) { Text(stringResource(b.label)) }
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                stringResource(boost.hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -269,9 +342,9 @@ fun ScanApp() {
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Nhận dạng chữ (OCR)", style = MaterialTheme.typography.titleSmall)
+                                Text(stringResource(R.string.ocr_title), style = MaterialTheme.typography.titleSmall)
                                 Text(
-                                    "PDF tìm kiếm và copy được chữ, xử lý lâu hơn",
+                                    stringResource(R.string.ocr_sub),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -285,7 +358,7 @@ fun ScanApp() {
                         Column {
                             Row {
                                 Text(
-                                    "Cỡ CCCD trên giấy",
+                                    stringResource(R.string.id_size),
                                     style = MaterialTheme.typography.titleSmall,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -304,7 +377,7 @@ fun ScanApp() {
                                 valueRange = 0.5f..2f
                             )
                             Text(
-                                "100% = kích thước thật của thẻ",
+                                stringResource(R.string.id_size_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -315,7 +388,7 @@ fun ScanApp() {
 
             item {
                 Text(
-                    "Tài liệu gần đây",
+                    stringResource(R.string.recent),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(top = 8.dp)
                 )
@@ -324,7 +397,7 @@ fun ScanApp() {
             if (files.isEmpty()) {
                 item {
                     Text(
-                        "Chưa có tài liệu nào.\nBấm \"Quét tài liệu\" hoặc \"Quét CCCD\" để bắt đầu.",
+                        stringResource(R.string.empty),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 16.dp)
@@ -388,7 +461,7 @@ private fun FileItem(file: File, scope: kotlinx.coroutines.CoroutineScope, onCha
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    (if (isId) "CCCD · " else "Tài liệu · ") +
+                    (if (isId) stringResource(R.string.id_label) else stringResource(R.string.doc_label)) + " · " +
                         SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(file.lastModified())),
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1
@@ -400,30 +473,30 @@ private fun FileItem(file: File, scope: kotlinx.coroutines.CoroutineScope, onCha
                 )
             }
             IconButton(onClick = { sendFiles(context, listOf(file), "application/pdf", null) }) {
-                Icon(Icons.Default.Share, contentDescription = "Chia sẻ PDF")
+                Icon(Icons.Default.Share, contentDescription = stringResource(R.string.share_pdf))
             }
             Column {
                 IconButton(onClick = { menu = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Thêm")
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more))
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Chia sẻ ảnh JPG") }, onClick = {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.share_jpg)) }, onClick = {
                         menu = false; shareImages(null)
                     })
-                    DropdownMenuItem(text = { Text("Gửi qua Zalo") }, onClick = {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.send_zalo)) }, onClick = {
                         menu = false; sendFiles(context, listOf(file), "application/pdf", "com.zing.zalo")
                     })
-                    DropdownMenuItem(text = { Text("Gửi qua Messenger") }, onClick = {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.send_messenger)) }, onClick = {
                         menu = false; sendFiles(context, listOf(file), "application/pdf", "com.facebook.orca")
                     })
-                    DropdownMenuItem(text = { Text("Đăng Facebook (ảnh)") }, onClick = {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.post_facebook)) }, onClick = {
                         menu = false; shareImages("com.facebook.katana")
                     })
-                    DropdownMenuItem(text = { Text("Gửi qua Bluetooth") }, onClick = {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.send_bluetooth)) }, onClick = {
                         menu = false; sendFiles(context, listOf(file), "application/pdf", "com.android.bluetooth")
                     })
                     DropdownMenuItem(
-                        text = { Text("Xóa", color = MaterialTheme.colorScheme.error) },
+                        text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
                         onClick = { menu = false; confirmDelete = true }
                     )
                 }
@@ -434,8 +507,8 @@ private fun FileItem(file: File, scope: kotlinx.coroutines.CoroutineScope, onCha
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Xóa tài liệu?") },
-            text = { Text("File này sẽ bị xóa khỏi app và không khôi phục được.") },
+            title = { Text(stringResource(R.string.delete_title)) },
+            text = { Text(stringResource(R.string.delete_msg)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
@@ -443,9 +516,9 @@ private fun FileItem(file: File, scope: kotlinx.coroutines.CoroutineScope, onCha
                         f.name.startsWith(file.nameWithoutExtension)
                     }?.forEach { it.delete() }
                     onChanged()
-                }) { Text("Xóa") }
+                }) { Text(stringResource(R.string.delete)) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Hủy") } }
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 }
@@ -462,7 +535,7 @@ private fun openPdf(context: Context, file: File) {
     try {
         context.startActivity(intent)
     } catch (e: ActivityNotFoundException) {
-        Toast.makeText(context, "Chưa có app đọc PDF", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.no_pdf_viewer), Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -482,10 +555,10 @@ private fun sendFiles(context: Context, files: List<File>, mime: String, pkg: St
             context.startActivity(Intent(intent).setPackage(pkg))
             return
         } catch (e: ActivityNotFoundException) {
-            Toast.makeText(context, "Chưa cài app này, mở danh sách chia sẻ chung", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.app_not_installed), Toast.LENGTH_SHORT).show()
         }
     }
-    context.startActivity(Intent.createChooser(intent, "Chia sẻ"))
+    context.startActivity(Intent.createChooser(intent, context.getString(R.string.share)))
 }
 
 /** Chuyển từng trang PDF thành ảnh JPG (để gửi qua Facebook, Zalo... dạng ảnh). */

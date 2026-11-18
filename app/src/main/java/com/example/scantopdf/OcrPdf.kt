@@ -20,13 +20,15 @@ private const val PAGE_WIDTH_PT = 595f // A4 ~ 595pt
  * Tạo PDF có thể tìm kiếm/copy chữ: vẽ ảnh trang, rồi chồng một lớp chữ gần như
  * trong suốt tại đúng vị trí mà OCR nhận dạng được.
  */
-suspend fun buildSearchablePdf(context: Context, pages: List<Uri>, out: File, quality: PdfQuality) =
+suspend fun buildSearchablePdf(
+    context: Context, pages: List<Uri>, out: File, quality: PdfQuality, boost: Boost = Boost.OFF
+) =
     withContext(Dispatchers.Default) {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         val doc = PdfDocument()
         try {
             pages.forEachIndexed { index, uri ->
-                val bmp = loadScaled(context, uri, quality.maxDim)
+                val bmp = loadScaled(context, uri, quality.maxDim, boost)
 
                 val text = recognizer.process(InputImage.fromBitmap(bmp, 0)).await()
 

@@ -23,7 +23,7 @@ private const val GAP = 40f
 /** Ghép mặt trước (trên) và mặt sau (dưới) của căn cước vào 1 trang A4, đúng kích thước thật. */
 suspend fun buildIdCardPdf(
     context: Context, front: Uri, back: Uri, out: File,
-    scale: Float = 1f, quality: PdfQuality = PdfQuality.MEDIUM
+    scale: Float = 1f, quality: PdfQuality = PdfQuality.MEDIUM, boost: Boost = Boost.OFF
 ) =
     withContext(Dispatchers.Default) {
         val doc = PdfDocument()
@@ -39,8 +39,8 @@ suspend fun buildIdCardPdf(
             val top1 = A4_H / 2f - gap / 2f - ch
             val top2 = A4_H / 2f + gap / 2f
 
-            drawCard(context, canvas, front, RectF(left, top1, left + cw, top1 + ch), quality.maxDim)
-            drawCard(context, canvas, back, RectF(left, top2, left + cw, top2 + ch), quality.maxDim)
+            drawCard(context, canvas, front, RectF(left, top1, left + cw, top1 + ch), quality.maxDim, boost)
+            drawCard(context, canvas, back, RectF(left, top2, left + cw, top2 + ch), quality.maxDim, boost)
 
             doc.finishPage(page)
             FileOutputStream(out).use { doc.writeTo(it) }
@@ -49,8 +49,8 @@ suspend fun buildIdCardPdf(
         }
     }
 
-private fun drawCard(context: Context, canvas: android.graphics.Canvas, uri: Uri, box: RectF, maxDim: Int) {
-    var bmp: Bitmap = loadScaled(context, uri, maxDim)
+private fun drawCard(context: Context, canvas: android.graphics.Canvas, uri: Uri, box: RectF, maxDim: Int, boost: Boost) {
+    var bmp: Bitmap = loadScaled(context, uri, maxDim, boost)
 
     // Ảnh dọc -> xoay ngang cho vừa khung thẻ
     if (bmp.height > bmp.width) {
